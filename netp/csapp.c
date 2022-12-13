@@ -947,29 +947,33 @@ ssize_t Rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen)
  *       -1 with errno set for other errors.
  */
 /* $begin open_clientfd */
+// 클라이언트용 소켓을 연다.
 int open_clientfd(char *hostname, char *port) {
-    int clientfd, rc;
+    int clientfd, rc; // 클라이언트 소켓 식별자
     struct addrinfo hints, *listp, *p;
 
     /* Get a list of potential server addresses */
     memset(&hints, 0, sizeof(struct addrinfo));
-    hints.ai_socktype = SOCK_STREAM;  /* Open a connection */
+    hints.ai_socktype = SOCK_STREAM;  /* 소켓이 연결을 위한 소켓임을 나타냄. Open a connection */
     hints.ai_flags = AI_NUMERICSERV;  /* ... using a numeric port arg. */
     hints.ai_flags |= AI_ADDRCONFIG;  /* Recommended for connections */
-    if ((rc = getaddrinfo(hostname, port, &hints, &listp)) != 0) {
+
+    rc = getaddrinfo(hostname, port, &hints, &listp); // 호스트 이름, 포트 번호로 부터 소켓 주소를 얻는다.
+    if (rc != 0) {
         fprintf(stderr, "getaddrinfo failed (%s:%s): %s\n", hostname, port, gai_strerror(rc));
         return -2;
     }
   
+    // 성공적으로 연결할 수 있는 구조체를 찾기위해 연결 리스트를 순차적으로 탐색한다.
     /* Walk the list for one that we can successfully connect to */
     for (p = listp; p; p = p->ai_next) {
         /* Create a socket descriptor */
         if ((clientfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) < 0) 
-            continue; /* Socket failed, try the next */
+            continue; /* 소켓 연결 실패시, 연결 리스트의 다음 노드를 검사한다. Socket failed, try the next */
 
-        /* Connect to the server */
+        /* 서버와의 연결을 수행한다. Connect to the server */
         if (connect(clientfd, p->ai_addr, p->ai_addrlen) != -1) 
-            break; /* Success */
+            break; /* 성공 시, 더이상 탐색 불 필요. Success */
         if (close(clientfd) < 0) { /* Connect failed, try another */  //line:netp:openclientfd:closefd
             fprintf(stderr, "open_clientfd: close failed: %s\n", strerror(errno));
             return -1;
@@ -981,6 +985,7 @@ int open_clientfd(char *hostname, char *port) {
     if (!p) /* All connects failed */
         return -1;
     else    /* The last connect succeeded */
+            /* connect 성공 시, 소켓 식별자를 클라이언트에게 리턴한다. */
         return clientfd;
 }
 /* $end open_clientfd */
@@ -994,28 +999,35 @@ int open_clientfd(char *hostname, char *port) {
  *       -1 with errno set for other errors.
  */
 /* $begin open_listenfd */
+// 서버용 소켓을 연다.
 int open_listenfd(char *port) 
 {
     struct addrinfo hints, *listp, *p;
-    int listenfd, rc, optval=1;
+    int listenfd, rc, optval=1; // 서버 소켓 식별자
 
     /* Get a list of potential server addresses */
     memset(&hints, 0, sizeof(struct addrinfo));
-    hints.ai_socktype = SOCK_STREAM;             /* Accept connections */
+    hints.ai_socktype = SOCK_STREAM;             /* 연결을 위한 소켓임을 나타냄. Accept connections */
     hints.ai_flags = AI_PASSIVE | AI_ADDRCONFIG; /* ... on any IP address */
     hints.ai_flags |= AI_NUMERICSERV;            /* ... using port number */
-    if ((rc = getaddrinfo(NULL, port, &hints, &listp)) != 0) {
+
+    // 주소 필드를 NULL로 설정함으로써 와일드카드의 기능을 수행한다.
+    // 커널에게 해당 서버가 이 호스트에 대한 모든 IP 주소에 대해 요청을 받을 것이라는 걸 의미
+    rc = getaddrinfo(NULL, port, &hints, &listp);
+    if (rc != 0) {
         fprintf(stderr, "getaddrinfo failed (port %s): %s\n", port, gai_strerror(rc));
         return -2;
     }
 
+    // 성공적으로 연결할 수 있는 구조체를 찾기 위해 연결 리스트를 순차적으로 탐색한다.
     /* Walk the list for one that we can bind to */
     for (p = listp; p; p = p->ai_next) {
         /* Create a socket descriptor */
         if ((listenfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) < 0) 
             continue;  /* Socket failed, try the next */
 
-        /* Eliminates "Address already in use" error from bind */
+        /* 이미 사용중인 소켓에 접근하는 것에 대한 에러를 미리 차단한다.
+        Eliminates "Address already in use" error from bind */
         setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR,    //line:netp:csapp:setsockopt
                    (const void *)&optval , sizeof(int));
 
@@ -1065,7 +1077,3 @@ int Open_listenfd(char *port)
 }
 
 /* $end csapp.c */
-
-
-
-
