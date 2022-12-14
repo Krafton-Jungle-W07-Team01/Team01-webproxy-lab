@@ -14,7 +14,7 @@ int main(void) {
 	p = strchr(buf, '&'); // 파라미터가 2개 이므로 처음 &가 나오고 나서부터 자른다.
     // ExamplUrl
     // request url : http://localhost:5000/cgi-bin/adder?number1=33&number2=22
-	*p = '\0';
+	*p = '\0'; // 맨 앞에 널 문자를 추가하는 이유? -> strchr는 ch 문자가 나온 뒤의 문자열 자리부터 리턴하기 떄문에
     q = strchr(buf, '=');
     *q = '\0';
     strcpy(arg1, q + 1);
