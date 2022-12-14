@@ -24,7 +24,7 @@ void read_requesthdrs(rio_t *rp)
 int parse_uri(char *uri, char *filename, char *cgiargs)
 {
 	char *ptr;
-
+	int     i, j;
 	if (!strstr(uri, "cgi-bin"))
 	{
 		strcpy(cgiargs, "");
@@ -39,13 +39,25 @@ int parse_uri(char *uri, char *filename, char *cgiargs)
 		ptr = index(uri, '?');
 		if (ptr)
 		{
-			strcpy(cgiargs, ptr + 1);
+			i = 0;
+			ptr = index(ptr, '=');
+			ptr++;
+			while (*ptr >= '0' && *ptr <= '9')
+				cgiargs[i++] = *ptr++;
+			cgiargs[i++] = '&';
+			ptr = index(ptr, '=');
+			ptr++;
+			while (*ptr >= '0' && *ptr <= '9')
+				cgiargs[i++] = *ptr++;
+			cgiargs[i] = '\0';
+			ptr = strchr(uri, '?');
 			*ptr = '\0';
 		}
 		else
 			strcpy(cgiargs, "");
 		strcpy(filename, ".");
 		strcat(filename, uri);
+			printf("%s\n", uri);
 		return (0);
 	}
 }
@@ -60,17 +72,21 @@ void get_filetype(char *filename, char *filetype)
 		strcpy(filetype, "image/png");
 	else if (strstr(filename, ".jpg"))
 		strcpy(filetype, "image/jpeg");
+	else if (strstr(filename, ".mpg"))
+		strcpy(filetype, "video/mpg");
+	else if (strstr(filename, ".mp4"))
+		strcpy(filetype, "video/mp4");
 	else
 		strcpy(filetype, "text/plain");
 }
 
-void serve_static(int fd, char *filename, int filesize)
+void serve_static(int fd, char *filename, int filesize, char *version)
 {
 	int srcfd;
 	char *srcp, filetype[MAXLINE], buf[MAXBUF];
 
 	get_filetype(filename, filetype);
-	sprintf(buf, "HTTP/1.0 200 OK\r\n");
+	sprintf(buf, "%s 200 OK\r\n", version);
 	sprintf(buf, "%sServer: Tiny Web Server\r\n", buf);
 	sprintf(buf, "%sConnection: close\r\n", buf);
 	sprintf(buf, "%sContent-length: %d\r\n", buf, filesize);
@@ -81,17 +97,20 @@ void serve_static(int fd, char *filename, int filesize)
 	printf("%s", buf);
 
 	srcfd = Open(filename, O_RDONLY, 0);
-	srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
+	//srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
+	srcp = malloc(sizeof(int) * filesize);
+	Rio_readn(srcfd, srcp, filesize);
 	Close(srcfd);
 	Rio_writen(fd, srcp, filesize);
-	Munmap(srcp, filesize);
+	free(srcp);
+	//Munmap(srcp, filesize);
 }
 
 void serve_dynamic(int fd, char *filename, char *cgiargs)
 {
 	char	buf[MAXLINE], *emptylist[] = { NULL };
 
-	sprintf(buf, "HTTP/1.0 200 OK\r\n");
+	sprintf(buf, "HTTP/1.1 200 OK\r\n");
 	Rio_writen(fd, buf, strlen(buf));
 	sprintf(buf, "Server: Tiny Web Server\r\n");
 	Rio_writen(fd, buf, strlen(buf));
@@ -115,7 +134,7 @@ void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longms
 	sprintf(body, "%s<p>%s: %s\r\n", body, longmsg, cause);
 	sprintf(body, "%s<hr><em>The Tiny Web server</em>\r\n", body);
 
-	sprintf(buf, "HTTP/1.0 %s %s\r\n", errnum, shortmsg);
+	sprintf(buf, "HTTP/1.1 %s %s\r\n", errnum, shortmsg);
 	Rio_writen(fd, buf, strlen(buf));
 	sprintf(buf, "Content-type: text/html\r\n");
 	Rio_writen(fd, buf, strlen(buf));
@@ -160,7 +179,7 @@ void doit(int fd)
 			clienterror(fd, filename, "403", "Forbidden", "Tiny couldn't read the file");
 			return ;
 		}
-		serve_static(fd, filename, sbuf.st_size);
+		serve_static(fd, filename, sbuf.st_size, version);
 	}
 	else
 	{
@@ -188,8 +207,7 @@ int main(int argc, char **argv) {
   listenfd = Open_listenfd(argv[1]);
   while (1) {
     clientlen = sizeof(clientaddr);
-    connfd = Accept(listenfd, (SA *)&clientaddr,
-                    &clientlen);  // line:netp:tiny:accept
+    connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);  // line:netp:tiny:accept
     Getnameinfo((SA *)&clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE,
                 0);
     printf("Accepted connection from (%s, %s)\n", hostname, port);
