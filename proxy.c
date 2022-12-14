@@ -11,13 +11,15 @@ void doit(int fd);
 void read_requesthdrs(rio_t *rp);
 int parse_uri(char *uri, char *ip, char *port, char *path);
 void connect_origin_server(int fd, char *buf, char *host, char *port, char *path);
+void *thread(void *vargp);
 
 int main(int argc, char **argv) 
 {
-    int listenfd, connfd;
+    int listenfd, *connfd;
     char hostname[MAXLINE], port[MAXLINE];
     socklen_t clientlen;
     struct sockaddr_storage clientaddr;
+    pthread_t tid;
 
     if (argc != 2) {
 	fprintf(stderr, "usage: %s <port>\n", argv[0]);
@@ -27,11 +29,13 @@ int main(int argc, char **argv)
     listenfd = Open_listenfd(argv[1]); // 프록시 소켓 오픈
     while (1) {
         clientlen = sizeof(clientaddr);
-        connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen); // (to client) 원본 서버로의 연결 요청
-        Getnameinfo((SA *) &clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE, 0); // (to client) 원본 서버 연결 정보 받음
-        printf("Accepted connection from (%s, %s)\n", hostname, port);
-        doit(connfd); // 트랜잭션 수행
-        Close(connfd); // 연결 종료
+        connfd = Malloc(sizeof(int));
+        *connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen); // (to client) 원본 서버로의 연결 요청
+        Pthread_create(&tid, NULL, thread, connfd);
+        // Getnameinfo((SA *) &clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE, 0); // (to client) 원본 서버 연결 정보 받음
+        // printf("Accepted connection from (%s, %s)\n", hostname, port);
+        // doit(connfd); // 트랜잭션 수행
+        // Close(connfd); // 연결 종료
     }
 }
 
@@ -64,6 +68,16 @@ void doit(int fd)
     connect_origin_server(fd, buf, host, port, path);
 }
 
+/* Thread routine */
+void *thread(void *vargp) 
+{
+    int connfd = *((int *)vargp);
+    Pthread_detach(pthread_self());   
+    Free(vargp);
+    doit(connfd);
+    Close(connfd);
+    return NULL;
+}
 /*
  * read_requesthdrs - read HTTP request headers
  */
